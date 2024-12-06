@@ -193,7 +193,9 @@ export class SignedDataVerifier {
                 }
                 certificateChain = chain.slice(0, 2).map(cert => new X509Certificate(Buffer.from(cert, 'base64')))
             } catch (error) {
-                if (error instanceof Error) {
+                if (error instanceof VerificationException) {
+                    throw error
+                } else if (error instanceof Error) {
                     throw new VerificationException(VerificationStatus.INVALID_CERTIFICATE, error)
                 }
                 throw new VerificationException(VerificationStatus.INVALID_CERTIFICATE)
@@ -347,6 +349,10 @@ export class SignedDataVerifier {
         throw new VerificationException(VerificationStatus.FAILURE)
     }
 
+    protected throwVerifyErr(status: VerificationStatus, errMsg?: string) {
+        throw new VerificationException(status, new Error(errMsg));
+    }
+
     private checkDates(cert: X509Certificate, effectiveDate: Date) {
         if (new Date(cert.validFrom).getTime() > (effectiveDate.getTime() + MAX_SKEW) ||
             new Date(cert.validTo).getTime() < (effectiveDate.getTime() - MAX_SKEW)) {
@@ -364,6 +370,7 @@ export class SignedDataVerifier {
     private extractSignedDate(decodedJWT: DecodedSignedData): Date {
         return decodedJWT.signedDate === undefined ? new Date() : new Date(decodedJWT.signedDate)
     }
+
 }
 
 export enum VerificationStatus {

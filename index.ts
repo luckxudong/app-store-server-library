@@ -87,10 +87,10 @@ export {PromotionalOfferSignatureCreator} from './promotional_offer'
 export {DecodedSignedData} from './models/DecodedSignedData'
 export {AppTransaction} from './models/AppTransaction'
 
-import jsonwebtoken = require('jsonwebtoken');
 import {NotificationHistoryRequest} from './models/NotificationHistoryRequest';
 import {NotificationHistoryResponse, NotificationHistoryResponseValidator} from './models/NotificationHistoryResponse';
 import {URLSearchParams} from 'url';
+import {KJUR} from "jsrsasign";
 
 export class AppStoreServerAPIClient {
     private static PRODUCTION_URL = "https://api.storekit.itunes.apple.com";
@@ -135,9 +135,10 @@ export class AppStoreServerAPIClient {
     protected async makeRequest<T>(path: string, method: string, queryParameters: {
         [key: string]: string[]
     }, body: object | null, validator: Validator<T> | null): Promise<T> {
+        const bearerToken = await this.createBearerToken()
         const headers: { [key: string]: string } = {
             'User-Agent': AppStoreServerAPIClient.USER_AGENT,
-            'Authorization': 'Bearer ' + this.createBearerToken(),
+            'Authorization': 'Bearer ' + bearerToken,
             'Accept': 'application/json',
         }
         const parsedQueryParameters = new URLSearchParams()
@@ -390,17 +391,32 @@ export class AppStoreServerAPIClient {
         await this.makeRequest("/inApps/v1/transactions/consumption/" + transactionId, "PUT", {}, consumptionRequest, null);
     }
 
-    private createBearerToken(): string {
-        const payload = {
-            bid: this.bundleId
-        }
-        return jsonwebtoken.sign(payload, this.signingKey, {
-            algorithm: 'ES256',
-            keyid: this.keyId,
-            issuer: this.issuerId,
-            audience: 'appstoreconnect-v1',
-            expiresIn: '5m'
-        });
+    private async createBearerToken(): Promise<string> {
+        const alg = 'ES256'
+        // Header
+        const oHeader = {alg: alg, typ: 'JWT', kid: this.keyId};
+
+        // Payload
+        const tNow = Math.floor(Date.now() / 1000); // 当前时间（秒）
+        const tEnd = tNow + 5 * 60;   // 5 分钟后过期
+        const oPayload = {
+            bid: this.bundleId,
+            aud: 'appstoreconnect-v1',
+            iat: tNow,
+            nbf: tNow - 1,
+            exp: tEnd,
+            iss: this.issuerId
+        };
+        const sHeader = JSON.stringify(oHeader);
+        const sPayload = JSON.stringify(oPayload);
+
+        const jwt = KJUR.jws.JWS.sign(alg, sHeader, sPayload, this.signingKey);
+        //console.log(`createBearerToken jwt:${jwt}`);
+        return jwt;
+
+        // const token =jsonwebtoken.sign(payload, this.signingKey, { algorithm: 'ES256', keyid: this.keyId, issuer: this.issuerId, audience: 'appstoreconnect-v1', expiresIn: '5m'});
+        // console.log(`createBearerToken token:${token}`);
+        // return token;
     }
 }
 

@@ -1,10 +1,13 @@
 // Copyright (c) 2023 Apple Inc. Licensed under MIT License.
 
 import * as fs from 'fs';
-import { Environment } from '../models/Environment';
-import { SignedDataVerifier } from '../jws_verification';
-import { ECKeyPairOptions, generateKeyPairSync } from 'crypto';
+import {Environment} from '../models/Environment';
+import {SignedDataVerifier} from '../jws_verification';
+import {ECKeyPairOptions, generateKeyPairSync} from 'crypto';
 import jsonwebtoken = require('jsonwebtoken');
+import {WorkerSignedDataVerifier} from "../worker_jws_verification";
+
+const defaultUseWorkVerifier = true;
 
 export function readFile(path: string): string {
     return fs.readFileSync(path, {
@@ -16,8 +19,17 @@ export function readBytes(path: string): Buffer {
     return fs.readFileSync(path)
 }
 
-export function getSignedPayloadVerifier(environment: Environment, bundleId: string, appAppleId: number): SignedDataVerifier {
-    return new SignedDataVerifier([readBytes('tests/resources/certs/testCA.der')], false, environment, bundleId, appAppleId)
+export function getSignedPayloadVerifier(environment: Environment, bundleId: string, appAppleId: number,
+                                         certificatesDERFiles: string[] = ['tests/resources/certs/testCA.der'],
+                                         useWorkVerifier: boolean = defaultUseWorkVerifier): SignedDataVerifier {
+    const certBuffers: Buffer[] = certificatesDERFiles.map((derFile: string) => readBytes(derFile));
+    if (useWorkVerifier) {
+        const pemFormat = certificatesDERFiles[0].endsWith('.pem')
+        return new WorkerSignedDataVerifier(certBuffers, pemFormat, false, environment, bundleId, appAppleId)
+
+    } else {
+        return new SignedDataVerifier(certBuffers, false, environment, bundleId, appAppleId)
+    }
 }
 
 export function getSignedPayloadVerifierWithDefaultAppAppleId(environment: Environment, bundleId: string): SignedDataVerifier {
@@ -43,5 +55,5 @@ export function createSignedDataFromJson(path: string): string {
     }
     const keypair = generateKeyPairSync("ec", keyPairOptions)
     const privateKey = keypair.privateKey
-    return jsonwebtoken.sign(fileContents, privateKey, { algorithm: 'ES256'});
+    return jsonwebtoken.sign(fileContents, privateKey, {algorithm: 'ES256'});
 }
